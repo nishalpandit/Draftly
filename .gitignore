@@ -1,0 +1,23 @@
+# Virtual environment & secrets
+env/
+.venv/
+venv/
+.env
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# SQLite local database
+db.sqlite3
+db.sqlite3-journal
+
+# Collected static files
+staticfiles/
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

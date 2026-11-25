@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ document.title }} - Draftly{% endblock %}
+
+{% block extra_css %}
+<!-- Quill Snow Theme CDN -->
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'css/editor.css' %}">
+{% endblock %}
+
+{% block layout %}
+<div class="editor-layout">
+    <!-- Top Editor Header -->
+    <header class="editor-header d-flex align-items-center justify-content-between gap-3">
+        <div class="d-flex align-items-center gap-2 flex-grow-1" style="max-width: 600px;">
+            <a href="{% url 'documents:dashboard' %}" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1" title="Back to Dashboard">
+                <i class="bi bi-arrow-left"></i>
+                <span class="d-none d-sm-inline">Dashboard</span>
+            </a>
+
+            {% if can_edit %}
+                <input type="text" id="document-title" class="editor-title-input" value="{{ document.title }}" maxlength="255" placeholder="Untitled Document" autocomplete="off" spellcheck="false" title="Click to rename document">
+            {% else %}
+                <div class="fw-bold fs-6 text-dark px-2 text-truncate" title="{{ document.title }}">{{ document.title }}</div>
+            {% endif %}
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            {% if can_edit %}
+                <!-- Autosave indicator -->
+                <span id="save-status" class="save-status-badge border bg-white text-secondary" title="Autosaves automatically as you type">
+                    <i id="save-status-icon" class="bi bi-check2 text-success"></i>
+                    <span id="save-status-text">Saved</span>
+                </span>
+            {% endif %}
+
+            {% if is_owner %}
+                <!-- Share button (Owner only) -->
+                <button type="button" class="btn btn-primary btn-sm d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#shareDocumentModal">
+                    <i class="bi bi-people-fill"></i>
+                    <span class="d-none d-sm-inline">Share</span>
+                </button>
+            {% endif %}
+        </div>
+    </header>
+
+    {% if not can_edit %}
+        <!-- Read-only Alert Banner -->
+        <div class="bg-warning-subtle text-dark border-bottom px-3 py-2 text-center small d-flex align-items-center justify-content-center gap-2">
+            <i class="bi bi-lock-fill text-warning"></i>
+            <span>You have <strong>view-only</strong> access to this document. Changes will not be saved.</span>
+        </div>
+    {% endif %}
+
+    <!-- Quill Toolbar (Rendered only if user has edit permission) -->
+    {% if can_edit %}
+        <div class="editor-toolbar-wrapper">
+            <div id="toolbar-container">
+                <span class="ql-formats">
+                    <select class="ql-header">
+                        <option value="1">Heading 1</option>
+                        <option value="2">Heading 2</option>
+                        <option value="3">Heading 3</option>
+                        <option selected>Normal</option>
+                    </select>
+                </span>
+                <span class="ql-formats">
+                    <button class="ql-bold"></button>
+                    <button class="ql-italic"></button>
+                    <button class="ql-underline"></button>
+                    <button class="ql-strike"></button>
+                </span>
+                <span class="ql-formats">
+                    <select class="ql-color"></select>
+                    <select class="ql-background"></select>
+                </span>
+                <span class="ql-formats">
+                    <button class="ql-list" value="ordered"></button>
+                    <button class="ql-list" value="bullet"></button>
+                </span>
+                <span class="ql-formats">
+                    <select class="ql-align"></select>
+                </span>
+                <span class="ql-formats">
+                    <button class="ql-link"></button>
+                    <button class="ql-clean"></button>
+                </span>
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- Centered Writing Viewport -->
+    <main class="writing-viewport">
+        <div class="writing-page">
+            <div id="quill-editor"></div>
+        </div>
+    </main>
+</div>
+
+<!-- Initial HTML Content Container (Safe from database) -->
+<div id="initial-content" style="display: none;">{{ document.content|safe }}</div>
+
+{% if is_owner %}
+<!-- Share Document Modal -->
+<div class="modal fade" id="shareDocumentModal" tabindex="-1" aria-labelledby="shareDocumentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow border-0">
+            <div class="modal-header border-bottom pb-3">
+                <div class="d-flex align-items-center gap-2 overflow-hidden">
+                    <i class="bi bi-people-fill text-primary fs-5"></i>
+                    <h5 class="modal-title fs-6 fw-bold text-truncate mb-0" id="shareDocumentModalLabel">Share "{{ document.title }}"</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="share-document-form" action="{% url 'documents:share' document.pk %}" method="post" class="mb-3">
+                    {% csrf_token %}
+                    <label for="share-email-input" class="form-label small fw-semibold text-secondary">Add people by email</label>
+                    <div class="row g-2">
+                        <div class="col-12 col-sm-6">
+                            <input type="email" id="share-email-input" name="email" class="form-control form-control-sm" placeholder="colleague@example.com" required autocomplete="off">
+                        </div>
+                        <div class="col-7 col-sm-3">
+                            <select id="share-permission-select" name="permission" class="form-select form-select-sm" aria-label="Permission level">
+                                <option value="viewer" selected>Viewer</option>
+                                <option value="editor">Editor</option>
+                            </select>
+                        </div>
+                        <div class="col-5 col-sm-3">
+                            <button type="submit" id="share-submit-btn" class="btn btn-primary btn-sm w-100 d-flex align-items-center justify-content-center gap-1">
+                                <span class="spinner-border spinner-border-sm d-none" id="share-submit-spinner" role="status" aria-hidden="true"></span>
+                                <span id="share-submit-text">Share</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-text small mt-1">
+                        <strong>Viewer:</strong> can read only &middot; <strong>Editor:</strong> can edit and save
+                    </div>
+                </form>
+
+                <div id="share-feedback" class="alert py-2 small d-none mb-3" role="alert"></div>
+
+                <hr class="my-3">
+
+                <h6 class="small fw-bold text-uppercase text-secondary mb-2">People with access</h6>
+                <div id="collaborators-list" class="list-group list-group-flush border rounded">
+                    <!-- Owner row -->
+                    <div class="list-group-item d-flex align-items-center justify-content-between py-2 px-3 bg-light">
+                        <div class="overflow-hidden me-2">
+                            <div class="small fw-semibold text-dark text-truncate">{{ document.owner.email|default:document.owner.username }} (you)</div>
+                            {% if document.owner.email %}
+                                <div class="text-muted" style="font-size: 0.75rem;">@{{ document.owner.username }}</div>
+                            {% endif %}
+                        </div>
+                        <span class="badge bg-primary-subtle text-primary">Owner</span>
+                    </div>
+
+                    {% for share in shares %}
+                        <div class="list-group-item d-flex align-items-center justify-content-between gap-2 py-2 px-3 collaborator-row" data-share-id="{{ share.pk }}">
+                            <div class="overflow-hidden me-auto">
+                                <div class="small fw-semibold text-dark text-truncate">{{ share.user.email|default:share.user.username }}</div>
+                                {% if share.user.email %}
+                                    <div class="text-muted" style="font-size: 0.75rem;">@{{ share.user.username }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                <select class="form-select form-select-sm collaborator-role-select" style="width: auto;" data-update-url="{% url 'documents:update_share' document.pk share.pk %}" data-current-role="{{ share.permission }}" aria-label="Change role for {{ share.user.email|default:share.user.username }}">
+                                    <option value="viewer" {% if share.permission == 'viewer' %}selected{% endif %}>Viewer</option>
+                                    <option value="editor" {% if share.permission == 'editor' %}selected{% endif %}>Editor</option>
+                                </select>
+                                <button type="button" class="btn btn-outline-danger btn-sm collaborator-revoke-btn" data-revoke-url="{% url 'documents:revoke_share' document.pk share.pk %}" title="Revoke access">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    {% endfor %}
+
+                    <div id="no-collaborators-msg" class="list-group-item text-muted small text-center py-3 {% if shares %}d-none{% endif %}">
+                        No collaborators yet. Share above to invite someone.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Config Container for JavaScript -->
+<div id="editor-config"
+     data-save-url="{% url 'documents:autosave' document.pk %}"
+     data-can-edit="{% if can_edit %}true{% else %}false{% endif %}"
+     data-csrf-token="{{ csrf_token }}"
+     style="display: none;">
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Quill Library CDN -->
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+<!-- Draftly Editor JS -->
+<script src="{% static 'js/editor.js' %}"></script>
+{% endblock %}

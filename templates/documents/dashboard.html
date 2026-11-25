@@ -1,0 +1,323 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Dashboard - Draftly{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+{% endblock %}
+
+{% block layout %}
+<div class="dashboard-wrapper">
+    <!-- Sidebar Overlay for mobile -->
+    <div class="sidebar-overlay"></div>
+
+    <!-- Sidebar -->
+    <aside class="dashboard-sidebar">
+        <a href="{% url 'documents:dashboard' %}" class="sidebar-brand">
+            <i class="bi bi-file-earmark-text-fill text-primary fs-4"></i>
+            <span>Draftly</span>
+        </a>
+
+        <div class="px-3 mb-3 d-flex flex-column gap-2">
+            <form method="post" action="{% url 'documents:create' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2 py-2 fw-medium shadow-sm">
+                    <i class="bi bi-plus-lg"></i>
+                    <span>New Document</span>
+                </button>
+            </form>
+            <button type="button" class="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-center gap-2 py-2 fw-medium" data-bs-toggle="modal" data-bs-target="#importDocumentModal">
+                <i class="bi bi-file-earmark-arrow-up"></i>
+                <span>Import Document</span>
+            </button>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="#my-documents" class="sidebar-link active">
+                <i class="bi bi-folder2-open text-primary"></i>
+                <span class="flex-grow-1">My Documents</span>
+                <span class="badge bg-secondary-subtle text-secondary rounded-pill">{{ owned_count }}</span>
+            </a>
+            <a href="#shared-documents" class="sidebar-link">
+                <i class="bi bi-people text-info"></i>
+                <span class="flex-grow-1">Shared with Me</span>
+                <span class="badge bg-secondary-subtle text-secondary rounded-pill">{{ shared_count }}</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-2 overflow-hidden">
+                    <div class="rounded-circle bg-primary-subtle text-primary fw-semibold d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; font-size: 0.85rem;">
+                        {{ user.username|slice:":1"|upper }}
+                    </div>
+                    <span class="small fw-semibold text-truncate text-secondary">{{ user.username }}</span>
+                </div>
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-link text-muted p-1" title="Log out">
+                        <i class="bi bi-box-arrow-right fs-5"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Workspace Content -->
+    <div class="dashboard-main">
+        <!-- Top App Bar -->
+        <header class="bg-white border-bottom py-2 px-3 px-md-4 d-flex align-items-center justify-content-between gap-3 sticky-top">
+            <div class="d-flex align-items-center gap-2">
+                <button id="sidebar-toggle" class="btn btn-outline-secondary btn-sm d-lg-none" type="button" aria-label="Toggle navigation">
+                    <i class="bi bi-list fs-5"></i>
+                </button>
+                <h1 class="h5 mb-0 fw-bold d-none d-md-block text-dark">Documents</h1>
+            </div>
+
+            <!-- Search Bar (Client-side instant + Server-side fallback) -->
+            <form method="get" action="{% url 'documents:dashboard' %}" class="flex-grow-1" style="max-width: 480px;">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-light border-end-0 text-muted">
+                        <i class="bi bi-search"></i>
+                    </span>
+                    <input type="text" id="doc-search" name="q" value="{{ search_query }}" class="form-control bg-light border-start-0 ps-1" placeholder="Search documents by title..." autocomplete="off">
+                    {% if search_query %}
+                        <a href="{% url 'documents:dashboard' %}" class="btn btn-outline-secondary" title="Clear search">
+                            <i class="bi bi-x"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </form>
+
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#importDocumentModal">
+                    <i class="bi bi-file-earmark-arrow-up"></i>
+                    <span class="d-none d-sm-inline">Import</span>
+                </button>
+                <form method="post" action="{% url 'documents:create' %}" class="d-none d-sm-block">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary btn-sm d-flex align-items-center gap-1">
+                        <i class="bi bi-plus-lg"></i>
+                        <span>Create</span>
+                    </button>
+                </form>
+            </div>
+        </header>
+
+        <!-- Alerts / Messages -->
+        <div class="p-3 px-md-4 pb-0">
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show small py-2" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <div class="p-3 px-md-4 flex-grow-1">
+            <!-- Section: Owned Documents -->
+            <section id="my-documents" class="mb-5">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h2 class="h6 text-uppercase text-secondary fw-bold letter-spacing mb-0">My Documents</h2>
+                    <span class="small text-muted">{{ owned_documents.count }} {% if owned_documents.count == 1 %}item{% else %}items{% endif %}</span>
+                </div>
+
+                {% if owned_documents %}
+                    <div class="row g-3" id="owned-docs-grid">
+                        {% for doc in owned_documents %}
+                            <div class="col-12 col-sm-6 col-lg-4 col-xl-3 owned-doc-card" data-title="{{ doc.title|lower }}">
+                                <div class="document-card shadow-sm position-relative">
+                                    <a href="{% url 'documents:editor' doc.pk %}" class="doc-card-link">
+                                        <div class="doc-card-icon">
+                                            <i class="bi bi-file-earmark-text"></i>
+                                        </div>
+                                        <div class="doc-card-title">{{ doc.title }}</div>
+                                        <div class="doc-card-meta">
+                                            <div class="d-flex align-items-center gap-1">
+                                                <i class="bi bi-clock"></i>
+                                                <span>Updated {{ doc.updated_at|date:"M d, Y" }}</span>
+                                            </div>
+                                            <div class="small text-muted mt-1">Owner: You</div>
+                                        </div>
+                                    </a>
+
+                                    <div class="position-absolute top-0 end-0 p-2">
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-light border-0 text-muted p-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Actions">
+                                                <i class="bi bi-three-dots-vertical"></i>
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                                <li>
+                                                    <a class="dropdown-item small" href="{% url 'documents:editor' doc.pk %}">
+                                                        <i class="bi bi-pencil me-2 text-primary"></i>Open in Editor
+                                                    </a>
+                                                </li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
+                                                    <button class="dropdown-item small text-danger" type="button" data-bs-toggle="modal" data-bs-target="#deleteConfirmModal" data-doc-id="{{ doc.pk }}" data-doc-title="{{ doc.title }}" data-delete-url="{% url 'documents:delete' doc.pk %}">
+                                                        <i class="bi bi-trash me-2"></i>Delete Document
+                                                    </button>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div id="owned-empty-search" class="empty-state d-none my-3">
+                        <i class="bi bi-search empty-state-icon"></i>
+                        <h3 class="h6 fw-semibold text-dark">No matching owned documents</h3>
+                        <p class="text-secondary small mb-0">Try a different title search term.</p>
+                    </div>
+                {% else %}
+                    <div class="empty-state">
+                        <i class="bi bi-file-earmark-plus empty-state-icon"></i>
+                        <h3 class="h6 fw-semibold text-dark">No documents yet</h3>
+                        <p class="text-secondary small mb-3">Create your first document or import an existing file to start writing.</p>
+                        <div class="d-flex align-items-center justify-content-center gap-2">
+                            <form method="post" action="{% url 'documents:create' %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-primary btn-sm">
+                                    <i class="bi bi-plus-lg me-1"></i>Create Document
+                                </button>
+                            </form>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#importDocumentModal">
+                                <i class="bi bi-file-earmark-arrow-up me-1"></i>Import Document
+                            </button>
+                        </div>
+                    </div>
+                {% endif %}
+            </section>
+
+            <!-- Section: Shared with Me -->
+            <section id="shared-documents" class="mb-4">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h2 class="h6 text-uppercase text-secondary fw-bold letter-spacing mb-0">Shared with Me</h2>
+                    <span class="small text-muted">{{ shared_documents.count }} {% if shared_documents.count == 1 %}item{% else %}items{% endif %}</span>
+                </div>
+
+                {% if shared_documents %}
+                    <div class="row g-3" id="shared-docs-grid">
+                        {% for share in shared_documents %}
+                            <div class="col-12 col-sm-6 col-lg-4 col-xl-3 shared-doc-card" data-title="{{ share.document.title|lower }}">
+                                <div class="document-card shadow-sm">
+                                    <a href="{% url 'documents:editor' share.document.pk %}" class="doc-card-link">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="doc-card-icon mb-0">
+                                                <i class="bi bi-file-earmark-person"></i>
+                                            </div>
+                                            <span class="badge {% if share.permission == 'editor' %}bg-primary-subtle text-primary{% else %}bg-secondary-subtle text-secondary{% endif %} text-capitalize">
+                                                {{ share.permission }}
+                                            </span>
+                                        </div>
+                                        <div class="doc-card-title">{{ share.document.title }}</div>
+                                        <div class="doc-card-meta">
+                                            <div class="small text-muted">Shared by {{ share.document.owner.username }}</div>
+                                            <div class="d-flex align-items-center gap-1 mt-1">
+                                                <i class="bi bi-clock"></i>
+                                                <span>Updated {{ share.document.updated_at|date:"M d, Y" }}</span>
+                                            </div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div id="shared-empty-search" class="empty-state d-none my-3">
+                        <i class="bi bi-search empty-state-icon"></i>
+                        <h3 class="h6 fw-semibold text-dark">No matching shared documents</h3>
+                        <p class="text-secondary small mb-0">Try a different title search term.</p>
+                    </div>
+                {% else %}
+                    <div class="empty-state">
+                        <i class="bi bi-people empty-state-icon"></i>
+                        <h3 class="h6 fw-semibold text-dark">No shared documents</h3>
+                        <p class="text-secondary small mb-0">Documents shared with you by teammates will appear here.</p>
+                    </div>
+                {% endif %}
+            </section>
+        </div>
+    </div>
+</div>
+
+<!-- Import Document Modal -->
+<div class="modal fade" id="importDocumentModal" tabindex="-1" aria-labelledby="importDocumentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow border-0">
+            <div class="modal-header border-bottom-0 pb-0">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="doc-card-icon mb-0" style="width: 34px; height: 34px; font-size: 1rem;">
+                        <i class="bi bi-file-earmark-arrow-up"></i>
+                    </div>
+                    <h5 class="modal-title fs-6 fw-bold" id="importDocumentModalLabel">Import Document</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="{% url 'documents:import_document' %}" enctype="multipart/form-data" id="modal-import-form">
+                {% csrf_token %}
+                <div class="modal-body py-3">
+                    <div class="upload-dropzone mb-3" id="modal-dropzone" onclick="document.getElementById('modal-file-input').click()">
+                        <i class="bi bi-cloud-arrow-up text-primary fs-1 mb-2 d-block"></i>
+                        <h6 class="fw-semibold mb-1">Choose a file or drag it here</h6>
+                        <p class="text-muted small mb-0">Supports <strong>.txt</strong> and <strong>.md</strong> up to 2 MB</p>
+                        <input type="file" id="modal-file-input" name="file" accept=".txt,.md" class="d-none" required>
+                    </div>
+
+                    <div id="modal-file-preview" class="d-none alert alert-light border d-flex align-items-center justify-content-between mb-3 py-2 px-3">
+                        <div class="d-flex align-items-center gap-2 overflow-hidden">
+                            <i class="bi bi-file-earmark-text text-primary fs-5"></i>
+                            <div class="text-truncate">
+                                <div class="fw-semibold small text-truncate" id="modal-file-name"></div>
+                                <div class="text-muted small" id="modal-file-size" style="font-size: 0.75rem;"></div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-2" id="modal-file-clear" title="Remove file">
+                            <i class="bi bi-x-circle fs-5"></i>
+                        </button>
+                    </div>
+
+                    <div id="modal-validation-error" class="alert alert-warning py-2 small d-none mb-0" role="alert"></div>
+                </div>
+                <div class="modal-footer border-top-0 pt-0">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="modal-import-submit-btn" class="btn btn-primary btn-sm d-flex align-items-center gap-2" disabled>
+                        <span class="spinner-border spinner-border-sm d-none" id="modal-import-spinner" role="status" aria-hidden="true"></span>
+                        <span id="modal-import-btn-text">Import Document</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow">
+            <div class="modal-header border-bottom-0 pb-0">
+                <h5 class="modal-title fs-6 fw-bold" id="deleteConfirmModalLabel">Delete Document</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body py-3">
+                <p class="mb-1">Are you sure you want to delete <strong id="delete-modal-doc-title">this document</strong>?</p>
+                <p class="text-muted small mb-0">This action cannot be undone and will revoke access for any collaborators.</p>
+            </div>
+            <div class="modal-footer border-top-0 pt-0">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <form id="delete-doc-form" method="post" action="">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger btn-sm">Delete Document</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/dashboard.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Import Document - Draftly{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+<style>
+    .upload-dropzone {
+        border: 2px dashed #cbd5e1;
+        border-radius: 12px;
+        background-color: #f8fafc;
+        padding: 3rem 1.5rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .upload-dropzone:hover, .upload-dropzone.dragover {
+        border-color: #3b82f6;
+        background-color: #eff6ff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="mb-3">
+            <a href="{% url 'documents:dashboard' %}" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1">
+                <i class="bi bi-arrow-left"></i>
+                <span>Back to Dashboard</span>
+            </a>
+        </div>
+
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <div class="doc-card-icon mb-0" style="width: 36px; height: 36px; font-size: 1.1rem;">
+                        <i class="bi bi-file-earmark-arrow-up"></i>
+                    </div>
+                    <div>
+                        <h2 class="h5 fw-bold mb-0">Import Document</h2>
+                        <p class="text-muted small mb-0">Upload a Markdown or plain text file</p>
+                    </div>
+                </div>
+
+                {% if error %}
+                    <div class="alert alert-danger py-2 small mb-3" role="alert">
+                        <i class="bi bi-exclamation-circle me-1"></i> {{ error }}
+                    </div>
+                {% endif %}
+
+                <form method="post" action="{% url 'documents:import_document' %}" enctype="multipart/form-data" id="import-page-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="from_page" value="1">
+
+                    <div class="upload-dropzone mb-3" id="page-dropzone" onclick="document.getElementById('page-file-input').click()">
+                        <i class="bi bi-cloud-arrow-up text-primary fs-1 mb-2 d-block"></i>
+                        <h5 class="fs-6 fw-semibold mb-1">Choose a file or drag it here</h5>
+                        <p class="text-muted small mb-0">Supports <strong>.txt</strong> and <strong>.md</strong> up to 2 MB</p>
+                        <input type="file" id="page-file-input" name="file" accept=".txt,.md" class="d-none" required>
+                    </div>
+
+                    <div id="page-file-preview" class="d-none alert alert-light border d-flex align-items-center justify-content-between mb-3 py-2 px-3">
+                        <div class="d-flex align-items-center gap-2 overflow-hidden">
+                            <i class="bi bi-file-earmark-text text-primary fs-5"></i>
+                            <div class="text-truncate">
+                                <div class="fw-semibold small text-truncate" id="page-file-name"></div>
+                                <div class="text-muted small" id="page-file-size" style="font-size: 0.75rem;"></div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-2" id="page-file-clear" title="Remove file">
+                            <i class="bi bi-x-circle fs-5"></i>
+                        </button>
+                    </div>
+
+                    <div id="page-validation-error" class="alert alert-warning py-2 small d-none mb-3" role="alert"></div>
+
+                    <div class="d-flex align-items-center justify-content-between pt-2">
+                        <a href="{% url 'documents:dashboard' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+                        <button type="submit" id="page-submit-btn" class="btn btn-primary btn-sm d-flex align-items-center gap-2" disabled>
+                            <span class="spinner-border spinner-border-sm d-none" id="page-submit-spinner" role="status" aria-hidden="true"></span>
+                            <span id="page-submit-text">Import Document</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const fileInput = document.getElementById('page-file-input');
+    const preview = document.getElementById('page-file-preview');
+    const nameEl = document.getElementById('page-file-name');
+    const sizeEl = document.getElementById('page-file-size');
+    const clearBtn = document.getElementById('page-file-clear');
+    const submitBtn = document.getElementById('page-submit-btn');
+    const errorEl = document.getElementById('page-validation-error');
+    const dropzone = document.getElementById('page-dropzone');
+    const form = document.getElementById('import-page-form');
+    const spinner = document.getElementById('page-submit-spinner');
+    const submitText = document.getElementById('page-submit-text');
+
+    const MAX_SIZE = 2 * 1024 * 1024;
+    const ALLOWED = ['.txt', '.md'];
+
+    function handleFile(file) {
+        errorEl.classList.add('d-none');
+        errorEl.textContent = '';
+
+        if (!file) {
+            preview.classList.add('d-none');
+            submitBtn.disabled = true;
+            return;
+        }
+
+        const ext = '.' + file.name.split('.').pop().toLowerCase();
+        if (!ALLOWED.includes(ext)) {
+            errorEl.textContent = 'Invalid file extension: ' + ext + '. Only .txt and .md files are supported.';
+            errorEl.classList.remove('d-none');
+            preview.classList.add('d-none');
+            submitBtn.disabled = true;
+            fileInput.value = '';
+            return;
+        }
+
+        if (file.size > MAX_SIZE) {
+            errorEl.textContent = 'File exceeds maximum limit of 2 MB (' + (file.size / (1024 * 1024)).toFixed(2) + ' MB).';
+            errorEl.classList.remove('d-none');
+            preview.classList.add('d-none');
+            submitBtn.disabled = true;
+            fileInput.value = '';
+            return;
+        }
+
+        if (file.size === 0) {
+            errorEl.textContent = 'The selected file is empty.';
+            errorEl.classList.remove('d-none');
+            preview.classList.add('d-none');
+            submitBtn.disabled = true;
+            fileInput.value = '';
+            return;
+        }
+
+        nameEl.textContent = file.name;
+        sizeEl.textContent = (file.size / 1024).toFixed(1) + ' KB';
+        preview.classList.remove('d-none');
+        submitBtn.disabled = false;
+    }
+
+    fileInput.addEventListener('change', function () {
+        handleFile(fileInput.files[0]);
+    });
+
+    clearBtn.addEventListener('click', function () {
+        fileInput.value = '';
+        preview.classList.add('d-none');
+        submitBtn.disabled = true;
+        errorEl.classList.add('d-none');
+    });
+
+    ['dragenter', 'dragover'].forEach(name => {
+        dropzone.addEventListener(name, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.add('dragover');
+        });
+    });
+
+    ['dragleave', 'drop'].forEach(name => {
+        dropzone.addEventListener(name, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove('dragover');
+        });
+    });
+
+    dropzone.addEventListener('drop', function (e) {
+        if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            handleFile(fileInput.files[0]);
+        }
+    });
+
+    form.addEventListener('submit', function () {
+        submitBtn.disabled = true;
+        spinner.classList.remove('d-none');
+        submitText.textContent = 'Importing...';
+    });
+});
+</script>
+{% endblock %}
