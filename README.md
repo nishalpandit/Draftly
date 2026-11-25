@@ -2,6 +2,11 @@
 
 A lightweight collaborative rich-text document editor built with Django, Bootstrap 5, plain JavaScript, and Quill.
 
+## Project Links
+
+- **Live Application**: https://draftly-ys6e.onrender.com
+- **GitHub Repository**: https://github.com/nishalpandit/Draftly
+
 ## Features
 
 - **Authentication**: Sign up (with unique email), log in, and log out.
@@ -83,3 +88,9 @@ python manage.py test
    python manage.py createsuperuser
    ```
    Follow the prompts to set the admin username, email, and password. (Alternatively, set `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL`, and `DJANGO_SUPERUSER_PASSWORD` temporarily and run `python manage.py createsuperuser --noinput`.)
+
+---
+
+## Known Limitations
+
+Real-time simultaneous collaborative editing is not currently implemented. Document sharing supports Viewer and Editor permissions.
